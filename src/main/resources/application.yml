@@ -6,14 +6,26 @@ spring:
       enabled: false
     gateway:
       routes:
+        - id: auth-service-api
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/auth/**
+          filters:
+            - StripPrefix=1
         - id: auth-service
           uri: lb://auth-service
           predicates:
             - Path=/auth/**
+        - id: image-service-api
+          uri: lb://image-service
+          predicates:
+            - Path=/api/images/**
+          filters:
+            - StripPrefix=1
         - id: image-service
           uri: lb://image-service
           predicates:
-            - Path=/images/**
+            - Path=/images/**,/user/**
 
 server:
   port: 8080
@@ -36,9 +48,3 @@ eureka:
   instance:
     prefer-ip-address: true
     instance-id: ${spring.application.name}:${server.port}
-
-jwt:
-  secret: ${JWT_SECRET:dGhpcy1pcy1hLWRldmVsb3Atb25seS1zZWNyZXQtY2hhbmdlLW1lLWxhdGVy}
-  allowed-paths:
-    - /auth/login
-    - /auth/register
