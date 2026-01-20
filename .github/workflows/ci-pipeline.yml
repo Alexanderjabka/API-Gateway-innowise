@@ -152,14 +152,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Save Docker image
-        run: docker save ${{ env.DOCKER_IMAGE_NAME }}:latest -o api-gateway.tar
+      - name: Save Docker image and tags
+        run: |
+          # Get the first tag from metadata output (tags are newline-separated)
+          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          # Get image ID from the tagged image
+          IMAGE_ID=$(docker images --format "{{.ID}}" $FIRST_TAG | head -n1)
+          # Save image by ID to preserve all tags
+          docker save $IMAGE_ID -o api-gateway.tar
+          # Save tags to file for use in publish job
+          echo "${{ steps.meta.outputs.tags }}" > docker-tags.txt
 
       - name: Upload Docker image artifact
         uses: actions/upload-artifact@v4
         with:
           name: docker-image
           path: api-gateway.tar
+          retention-days: 1
+
+      - name: Upload Docker tags
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-tags
+          path: docker-tags.txt
           retention-days: 1
 
   publish-docker-image:
@@ -172,6 +187,11 @@ jobs:
         with:
           name: docker-image
 
+      - name: Download Docker tags
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-tags
+
       - name: Load Docker image
         run: docker load -i api-gateway.tar
 
@@ -182,7 +202,11 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Push Docker image to Docker Hub
-        run: docker image push --all-tags ${{ env.DOCKER_IMAGE_NAME }}
+        run: |
+          # Get the first tag from saved tags file
+          FIRST_TAG=$(head -n1 docker-tags.txt)
+          # Push all tags - Docker will push all tags associated with the image
+          docker image push --all-tags $FIRST_TAG || docker image push $FIRST_TAG
 
       - name: Docker Hub image URL
         run: echo "Image published to https://hub.docker.com/r/${{ env.DOCKER_IMAGE_NAME }}"
