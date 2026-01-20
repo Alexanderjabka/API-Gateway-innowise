@@ -195,6 +195,30 @@ jobs:
       - name: Load Docker image
         run: docker load -i api-gateway.tar
 
+      - name: Verify and tag image
+        run: |
+          # Get repository name and all tags
+          FIRST_TAG=$(head -n1 docker-tags.txt)
+          REPO_NAME=$(echo $FIRST_TAG | cut -d':' -f1)
+          
+          # Find the loaded image (should have at least one tag or we can use the image ID)
+          IMAGE_ID=$(docker images --format "{{.ID}}" $REPO_NAME | head -n1)
+          if [ -z "$IMAGE_ID" ]; then
+            # If no image found by repo name, get the first loaded image
+            IMAGE_ID=$(docker images --format "{{.ID}}" --filter "dangling=false" | head -n1)
+          fi
+          
+          # Apply all tags from the tags file to ensure they exist
+          while IFS= read -r tag; do
+            if [ ! -z "$tag" ]; then
+              docker tag $IMAGE_ID $tag || true
+            fi
+          done < docker-tags.txt
+          
+          echo "Repository: $REPO_NAME"
+          echo "Available images:"
+          docker images $REPO_NAME
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -203,10 +227,11 @@ jobs:
 
       - name: Push Docker image to Docker Hub
         run: |
-          # Get the first tag from saved tags file
+          # Get the repository name from the first tag (format: user/repo:tag)
           FIRST_TAG=$(head -n1 docker-tags.txt)
-          # Push all tags - Docker will push all tags associated with the image
-          docker image push --all-tags $FIRST_TAG || docker image push $FIRST_TAG
+          REPO_NAME=$(echo $FIRST_TAG | cut -d':' -f1)
+          # Push all tags using repository name (without tag)
+          docker push --all-tags $REPO_NAME
 
       - name: Docker Hub image URL
         run: echo "Image published to https://hub.docker.com/r/${{ env.DOCKER_IMAGE_NAME }}"
